@@ -1,57 +1,34 @@
-# Sample Hardhat 3 Project (`mocha` and `ethers`)
+# StacksBit Flare
 
-This project showcases a Hardhat 3 project using `mocha` for tests and the `ethers` library for Ethereum interactions.
+**Bitcoin-native escrow and trust infrastructure — ported to Flare.**
 
-To learn more about Hardhat 3, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3](https://hardhat.org/hardhat3-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+> StacksBit is building the trust layer for digital commerce. While blockchains enable value transfer, they do not solve the trust problem between transacting parties. StacksBit enables buyers and merchants who have never met to transact safely using decentralized escrow, AI-assisted risk assessment, and transparent settlement. 
+> For the Flare Summer Signal hackathon, StacksBit extends this trust layer with Flare's interoperability. This allows a secure cross-chain settlement across digital assets.
 
-## Project Overview
+## Deployed Contract
 
-This example project includes:
+| Network | Address |
+|---------|---------|
+| Flare Coston2 Testnet | `0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66` |
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using `mocha` and ethers.js
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+Explorer: https://coston2.testnet.flarescan.com/address/0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66
 
-## Usage
+## About StacksBit
 
-### Running Tests
+StacksBit is originally built on Stacks/Bitcoin. 
+This repo ports the core escrow contract to Flare using Solidity.
 
-To run all the tests in the project, execute the following command:
+## Flare Hackathon — Summer Signal 2026
 
-```shell
-npx hardhat test
-```
+- Track: Bounty 1 — Interoperable Asset Products
+- Deployed on: Flare Coston2 Testnet
+- GitHub: https://github.com/rogersterkaa/stacksBit-flare
 
-You can also selectively run the Solidity or `mocha` tests:
+## Original Project
 
-```shell
-npx hardhat test solidity
-npx hardhat test mocha
-```
+- GitHub: https://github.com/rogersterkaa/StacksBit
+- Live Frontend: https://stacksbit-react.vercel.app
 
-### Make a deployment to Sepolia
+## License
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
-
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
-
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-After setting the variable, you can run the deployment with the Sepolia network:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
+MIT
