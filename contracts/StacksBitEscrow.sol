@@ -385,4 +385,52 @@ contract StacksBitEscrow {
         if (disputeRate >= 5)  return 35;
         return 10;
     }
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    /// @notice Returns the total number of registered merchants
+    /// @return count Total merchant count
+    function getMerchantCount() external view returns (uint256 count) {
+        return merchantCount;
+    }
+
+    /// @notice Returns the total number of payments created
+    /// @return count Total payment count
+    function getPaymentCount() external view returns (uint256 count) {
+        return paymentCount;
+    }
+
+    /// @notice Returns the total value currently locked in escrow
+    /// @return total Total C2FLR locked across all Locked payments
+    function getTotalLockedFunds() external view returns (uint256 total) {
+        for (uint256 i = 1; i <= paymentCount; i++) {
+            if (payments[i].status == PaymentStatus.Locked) {
+                total += payments[i].amount;
+            }
+        }
+    }
+
+    /// @notice Check if a merchant is registered
+    /// @param wallet The wallet address to check
+    /// @return True if registered
+    function isMerchantRegistered(address wallet) external view returns (bool) {
+        return merchants[wallet].registered;
+    }
+
+    /// @notice Check if a payment exists
+    /// @param paymentId The payment ID to check
+    /// @return True if payment exists
+    function paymentExists(uint256 paymentId) external view returns (bool) {
+        return payments[paymentId].id != 0;
+    }
+
+    /// @notice Check if a payment is completed (confirmed or refunded)
+    /// @param paymentId The payment ID to check
+    /// @return True if payment is in a terminal state
+    function isPaymentCompleted(uint256 paymentId) external view returns (bool) {
+        PaymentStatus status = payments[paymentId].status;
+        return status == PaymentStatus.Confirmed || status == PaymentStatus.Refunded;
+    }
 }
