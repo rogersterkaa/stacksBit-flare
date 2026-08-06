@@ -2,6 +2,8 @@
 
 **Trust infrastructure for digital commerce. Enabling buyers and merchants who don't know each other to transact safely through blockchain escrow, AI-assisted risk assessment, and interoperable settlement on Flare.**
 
+> **Validated with real merchants in Jos, Nigeria** through the Stacks Foundry Validate program (Q2 2026). Subsequently ported from Stacks to Flare to enable interoperable escrow for digital commerce.
+
 ---
 
 ## Why This Matters
@@ -48,7 +50,7 @@ StacksBit is an existing project — originally built on Stacks (Bitcoin L2) usi
 - React + TypeScript frontend deployed at stacksbit-react.vercel.app
 - 5-week structured merchant validation through Stacks Foundry Validate (Q2 2026)
 - Real pilot sessions with merchants in Jos, Plateau State, Nigeria
-- Every merchant confirmed bilateral fraud pain. Both buyers AND merchants get scammed
+- Every merchant confirmed bilateral fraud pain — both buyers AND merchants get scammed
 
 ---
 
@@ -60,7 +62,7 @@ For Flare Summer Signal, the following was newly built:
 
 2. **Flare Coston2 deployment** — contract deployed and verified at `0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66` with a fully verified end-to-end transaction flow.
 
-3. **Cross-chain trust architecture** — the original StacksBit settles in sBTC on Stacks. The Flare version extends the same trust infrastructure to C2FLR/FLR and, through Flare's FAssets bridge, to bridged BTC and XRP, enabling trustless commerce regardless of which asset the buyer and merchant prefer.
+3. **Cross-chain trust architecture** — the original StacksBit settles in sBTC on Stacks. The Flare version extends the same trust infrastructure to C2FLR/FLR and, through Flare's FAssets bridge, to bridged BTC and XRP.
 
 ---
 
@@ -70,32 +72,39 @@ Flare enables StacksBit to extend trust beyond Bitcoin-native assets. While the 
 
 **EVM compatibility** — any EVM wallet (MetaMask, Rabby, etc.) can interact with StacksBit on Flare, dramatically reducing onboarding friction compared to Bitcoin-native wallets.
 
-**FTSO price feeds (next milestone)** — Flare's decentralized oracle provides real-time NGN/FLR exchange rates, allowing Nigerian merchants to price invoices in naira while settling in FLR. Commerce in local currency, settlement in crypto — no manual conversion.
+**FTSO price feeds (next milestone)** — Flare's decentralized oracle provides real-time NGN/FLR exchange rates, allowing Nigerian merchants to price invoices in naira while settling in FLR.
 
-**FAssets integration (roadmap)** — Flare's trust-minimized bridge enables StacksBit to settle in bridged BTC or XRP. A merchant in Lagos can receive BTC. A buyer in Nairobi can pay in XRP. The trust layer works regardless.
+**FAssets integration (roadmap)** — Flare's trust-minimized bridge enables StacksBit to settle in bridged BTC or XRP.
 
 ---
 
 ## Architecture
 
+### Payment Flow
+
+```mermaid
+graph TD
+    A[Merchant Registers] --> B[Create Payment Invoice]
+    B --> C[Share Payment ID with Buyer]
+    C --> D[Buyer Pays C2FLR into Escrow]
+    D --> E{Delivery?}
+    E -->|Confirmed| F[Funds Released to Merchant]
+    E -->|Disputed| G[Funds Frozen]
+    G --> H[Owner Resolves Dispute]
+    H -->|Refund| I[Buyer Refunded]
+    H -->|Release| F
+    F --> J[Merchant Reputation Updated On-chain]
 ```
-         Buyer
-           │
-           ▼
-    Creates Payment Intent
-           │
-           ▼
-  StacksBit Trust Layer
-  ├── Escrow Contract
-  ├── Trust & Reputation Engine
-  ├── Dispute Resolution Logic
-  └── Settlement (FLR / FAssets)
-           │
-           ▼
-    Flare Blockchain
-           │
-           ▼
-        Merchant
+
+### Frontend to Blockchain
+
+```mermaid
+graph LR
+    A[React Frontend] --> B[Leather / MetaMask Wallet]
+    B --> C[StacksBit Escrow Contract]
+    C --> D[Flare Coston2]
+    D --> E[Events Emitted]
+    E --> F[Merchant Dashboard Updates]
 ```
 
 ---
@@ -129,6 +138,28 @@ Neither party can cheat:
 | `getRiskScore(merchant)` | Anyone | Returns trust score 0-100 |
 | `getMerchant(wallet)` | Anyone | Returns full merchant profile |
 | `getPayment(id)` | Anyone | Returns payment details and status |
+| `getMerchantCount()` | Anyone | Total registered merchants |
+| `getPaymentCount()` | Anyone | Total payments created |
+| `getTotalLockedFunds()` | Anyone | Total C2FLR currently in escrow |
+| `isMerchantRegistered(wallet)` | Anyone | Check if merchant exists |
+| `paymentExists(id)` | Anyone | Check if payment exists |
+| `isPaymentCompleted(id)` | Anyone | Check if payment is in terminal state |
+
+---
+
+## Security
+
+StacksBit is designed with security as a core principle, not an afterthought:
+
+- **Escrow prevents premature fund release** — funds are held by the contract, not the merchant. The merchant cannot access funds until the buyer confirms delivery.
+- **Only the buyer can confirm delivery** — merchants cannot self-release funds. This is the key trust guarantee.
+- **Funds remain locked during disputes** — raising a dispute freezes funds immediately. Neither party can access them until the owner resolves.
+- **Custom errors over require strings** — the contract uses Solidity custom errors (`revert NotBuyer()`, `revert WrongStatus()`) for gas efficiency and clarity.
+- **On-chain audit trail** — every state change emits a verifiable event. The full payment lifecycle is permanently recorded on Flare.
+- **Merchant reputation updates automatically** — dispute count and completed count update on-chain after every transaction, making reputation manipulation difficult.
+- **No upgradeable proxy** — the contract is immutable. What is deployed is what runs. No admin can change logic after deployment.
+
+> **Note:** This contract has not yet been formally audited. It is deployed on Coston2 testnet for hackathon purposes. A security audit is planned before mainnet deployment.
 
 ---
 
