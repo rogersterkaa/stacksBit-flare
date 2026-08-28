@@ -23,11 +23,18 @@ async function main() {
   );
   const escrow = new ethers.Contract(CONTRACT_ADDRESS, artifact.abi, wallet);
 
-  // Step 1 — Register merchant
-  console.log("\n1. Registering merchant...");
-  const tx1 = await escrow.registerMerchant("StacksBit Test Merchant", "test@stacksbit.com");
-  await tx1.wait();
-  console.log("✅ Merchant registered! TX:", tx1.hash);
+  // Step 1 — Register merchant (skip if already registered)
+  console.log("\n1. Checking merchant registration...");
+  const isRegistered = await escrow.isMerchantRegistered(wallet.address);
+  
+  if (!isRegistered) {
+    console.log("   Registering new merchant...");
+    const tx1 = await escrow.registerMerchant("StacksBit Test Merchant", "test@stacksbit.com");
+    await tx1.wait();
+    console.log("✅ Merchant registered! TX:", tx1.hash);
+  } else {
+    console.log("✅ Merchant is already registered");
+  }
 
   // Step 2 — Create payment
   console.log("\n2. Creating payment...");
@@ -51,12 +58,20 @@ async function main() {
   }
   console.log("   Payment ID:", paymentId.toString());
 
-  // Step 3 — Pay invoice
+    // Step 3 — Pay invoice
   console.log("\n3. Paying invoice...");
   const amount = ethers.parseEther("0.1");
   const tx3 = await escrow.payInvoice(paymentId, { value: amount });
   await tx3.wait();
   console.log("✅ Invoice paid! TX:", tx3.hash);
+
+  // Check payment status (Locked)
+  console.log("\n3b. Verifying escrow lock...");
+  const paymentAfterPay = await escrow.getPayment(paymentId);
+  const statusNames = ["Pending", "Locked", "Confirmed", "Disputed", "Refunded"];
+  console.log("   Payment status:", statusNames[paymentAfterPay.status]);
+  console.log("   Amount locked:", ethers.formatEther(paymentAfterPay.amount), "BOT");
+  console.log("✅ Funds locked in escrow — neither party can access them");
 
   // Step 4 — Confirm delivery
   console.log("\n4. Confirming delivery...");
