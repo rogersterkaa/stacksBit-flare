@@ -2,13 +2,28 @@
 
 **Trust Infrastructure for Bitcoin Commerce**
 
-Non-custodial escrow platform enabling secure transactions between buyers and merchants using Bitcoin and Bitcoin L2 networks.
+> Non-custodial escrow infrastructure designed to help buyers and merchants transact safely using blockchain-based escrow and transparent settlement across Bitcoin and compatible networks.
+
+> **⚠️ MAINNET NOTICE**
+>
+> StacksBit is deployed and verified on BOT Chain Mainnet, but the production escrow contract is **not yet approved for real customer funds**. Pre-audit security remediation is currently in progress. Formal security review, remediation, retesting, and launch approval are required before real customer deposits are accepted.
 
 ---
 
-## DEPLOYMENT STATUS
+## DEPLOYMENT & SECURITY STATUS
 
-### 🟢 PRODUCTION DEPLOYMENT (BOT Chain Mainnet)
+| Environment | Status | Customer Funds | Details |
+|---|---|---|---|
+| BOT Chain Mainnet | Deployed & verified | ❌ Not approved | Audit pending |
+| BOT Chain Testnet | Testing | ❌ No real funds | For integration testing |
+| Flare Coston2 | Historical | ❌ No real funds | Reference deployment |
+| Stacks Testnet | Reference | ❌ No real funds | Original Clarity implementation |
+
+> **Important:** Mainnet deployment does not mean production approval. The BOT Chain Mainnet contract is currently undergoing pre-audit remediation. StacksBit will not intentionally accept real customer funds until the required security review, remediation, retesting, and launch approvals have been completed.
+
+---
+
+## 🟢 MAINNET DEPLOYMENT — AUDIT PENDING
 
 **Network:** BOT Chain Mainnet (ChainID 677)  
 **Contract Address:** `0x7D4d65AA41dA0e321ad52e46E9120F07D55B5284`  
@@ -17,48 +32,40 @@ Non-custodial escrow platform enabling secure transactions between buyers and me
 **Last Deploy TX:** 0xa1728062cd09ce135bb864ed6614b116470cb671508235d6466a8ea3f1002f88  
 **Compiler:** Solidity ^0.8.0  
 
-**⚠️ IMPORTANT:** This contract is deployed but **NOT YET APPROVED FOR REAL CUSTOMER FUNDS**. Security review and audit completion are required before production use with customer deposits.
-
----
-
-### 🟡 TESTNET DEPLOYMENTS
-
-#### Stacks Testnet
-**Network:** Stacks Testnet  
-**Status:** Original implementation in Clarity  
-**Purpose:** Reference and testing  
-
-#### Flare Coston2 Testnet (HISTORICAL)
-**Network:** Flare Coston2 Testnet (ChainID 114)  
-**Contract Address:** `0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66`  
-**Status:** Reference deployment - not actively maintained  
-**Purpose:** Early multi-chain research  
-
 ---
 
 ## ARCHITECTURE
+                    StacksBit
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+   Stacks Testnet            BOT Chain Mainnet
+          │                         │
+  Clarity Contracts        Solidity Escrow Contract
+          │                         │
+      Reference             Deployed / Verified
+                                    │
+                              Audit Pending
+                                    │
+                          Real Funds NOT Approved
 
-                StacksBit
-                   │
-          ┌────────┴────────┐
-          │                 │
-    Stacks Testnet     BOT Chain Mainnet
-          │                 │
-  Clarity Contracts    Solidity Contracts
-          │                 │
-      (Reference)      (Production Ready)
-
-      
 ---
 
 ## QUICK START
 
-### For Testing (Testnet)
-Use **BOT Chain Testnet** (ChainID 968):
+### For Testing
+
+BOT Chain Testnet (ChainID 968) is available for network/integration testing.
+
 - Faucet: https://faucet.botchain.ai
-- Contract: `0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66`
+- Network: BOT Chain Testnet
+- Chain ID: 968
+
+> The current production escrow deployment is on BOT Chain Mainnet.
+> Do not use the mainnet contract for testing with real funds.
 
 ### For Audit/Review
+
 Review the mainnet deployment:
 - Repository: https://github.com/rogersterkaa/stacksbit-flare
 - Branch: `main`
@@ -68,6 +75,7 @@ Review the mainnet deployment:
 ---
 
 ## REPOSITORY STRUCTURE
+
 stacksbit-flare/
 ├── contracts/
 │ └── StacksBitEscrow.sol # Main escrow contract (Solidity)
@@ -84,9 +92,9 @@ stacksbit-flare/
 
 ## SECURITY & AUDIT
 
-**Current Status:** Pre-audit remediation in progress  
 **Auditor:** Arctek Audits (https://arctekaudits.com)  
-**Audit Scope:** Package 3 Critical Path Review  
+**Recommended Audit Scope:** Package 3 — Critical Path Review  
+**Current Status:** Pre-audit remediation in progress; formal audit not yet commissioned.
 
 See `PRE_AUDIT_REMEDIATION.md` for detailed security roadmap and timeline.
 
@@ -98,8 +106,8 @@ See `PRE_AUDIT_REMEDIATION.md` for detailed security roadmap and timeline.
 
 | Network | ChainID | Contract | Status | Purpose |
 |---------|---------|----------|--------|---------|
-| BOT Chain Mainnet | 677 | 0x7D4d65AA41dA0e321ad52e46E9120F07D55B5284 | Deployed | Production (audit pending) |
-| BOT Chain Testnet | 968 | 0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66 | Deployed | Testing & validation |
+| BOT Chain Mainnet | 677 | 0x7D4d65AA41dA0e321ad52e46E9120F07D55B5284 | Deployed | Audit pending |
+| BOT Chain Testnet | 968 | Available | Testing | Network/integration testing |
 | Flare Coston2 | 114 | 0xd0D794E8ea1B7048a1E0F9afddB188a309EA6F66 | Historical | Reference only |
 | Stacks Testnet | - | (Clarity) | Reference | Original implementation |
 
