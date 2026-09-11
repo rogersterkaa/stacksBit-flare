@@ -179,9 +179,23 @@ Dual-chain support:
 
 **Developer:** Rogers Terkaa (rogersterkaa@gmail.com)  
 **GitHub:** https://github.com/rogersterkaa  
-**StacksBit:** https://stacksbit.com  
+**StacksBit:** https://stacksbit.com 
+
+## Support This Project
+
+If you believe in open-source trust infrastructure for digital commerce, 
+consider supporting StacksBit development:
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-GitHub-blue?style=for-the-badge)](https://github.com/sponsors/rogersterkaa)
+
+Your sponsorship helps fund:
+✅ Smart contract security & audits
+✅ Escrow and settlement infrastructure  
+✅ Risk assessment & fraud prevention
+✅ Merchant onboarding & support
+✅ Full-time development
 
 ---
 
-**Last Updated:** September 8, 2026  
+**Last Updated:** September 11, 2026  
 **Repository:** https://github.com/rogersterkaa/stacksbit-flare
