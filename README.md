@@ -6,6 +6,8 @@ One Escrow. Multiple Blockchains. Safe Transactions for Africa.
 
 StacksBit is open-source, non-custodial trust infrastructure designed to help African merchants and buyers transact safely using blockchain-based escrow, transparent settlement, risk assessment, and dispute resolution.
 
+> **v2 draft:** an improved escrow contract (fee isolation, merchant-set price, delivery deadline and refunds) is on the [`v2-draft` branch](https://github.com/rogersterkaa/stacksBit-flare/tree/v2-draft). It is not deployed and not audited.
+
 ---
 
 ## The Problem
