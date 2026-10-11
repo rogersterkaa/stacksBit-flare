@@ -3,10 +3,45 @@ pragma solidity ^0.8.24;
 
 /**
  * @title StacksBit Escrow v2
- * @author Terkaa Tarkighir (Rogers), Jos, Nigeria
- * @notice Escrow for commerce between merchants and buyers who do not know each other.
- *         Native-asset (e.g. BOT) payments are locked in the contract and released only
- *         when the buyer confirms delivery, a dispute is resolved, or a deadline passes.
+ * @author Terkaa Tarkighir (Rogers) — Jos, Nigeria
+ * @notice Fraud-protection escrow for African commerce. Built for BOT Chain (EVM),
+ *         originally developed and first deployed on Flare.
+ *
+ * @dev PROBLEM:
+ *      In Nigeria and across Africa, online commerce runs on "send money first
+ *      and pray." Buyers get scammed by fake vendors. Merchants get scammed by
+ *      fake buyers. Both sides have no recourse except banks and lawyers —
+ *      slow, expensive, and often ineffective.
+ *
+ * @dev SOLUTION:
+ *      StacksBit holds payment in escrow until delivery is confirmed.
+ *      Nobody cheats. Nobody disappears. Both sides are protected by code.
+ *
+ * @dev FLOW:
+ *      1. Merchant registers their business on-chain
+ *      2. Merchant creates a payment request: a price, a delivery window
+ *         (1-14 days) and a description
+ *      3. Buyer pays at least the price, in the chain's native asset (BOT),
+ *         into the escrow contract
+ *      4. Funds are LOCKED — neither party can access them
+ *      5. Merchant delivers the goods or service
+ *      6. Buyer confirms delivery — funds release to the merchant
+ *         automatically, minus the 2.5% platform fee
+ *      7. Merchant missed the deadline? The buyer can claim a refund.
+ *         Buyer inactive for 7 days after that window? The merchant can claim.
+ *      8. Dispute? Funds stay locked until the owner resolves
+ *
+ * @dev FRAUD DETECTION:
+ *      Every merchant has an on-chain risk score (0-100) calculated from the
+ *      share of their finished payments that ended in a refund to the buyer
+ *      (disputes the merchant lost). High refund rate = high risk score =
+ *      flagged for manual review.
+ *
+ * @dev VALIDATED WITH:
+ *      Real merchants in Jos, Plateau State, Nigeria through the
+ *      Stacks Foundry Validate program (5-week structured validation, Q2 2026).
+ *      Every merchant interviewed confirmed experiencing bilateral fraud with
+ *      no recourse (an early, small sample).
  *
  * @dev STATUS: DRAFT v2. Not deployed. Not audited. Do not use with real funds before
  *      tests and a security review.
