@@ -29,7 +29,7 @@ pragma solidity ^0.8.24;
  *         automatically, minus the 2.5% platform fee
  *      7. Merchant missed the deadline? The buyer can claim a refund.
  *         Buyer inactive for 7 days after that window? The merchant can claim.
- *      8. Dispute? Funds stay locked until the owner resolves
+ *      8. Dispute? The buyer can raise one; funds stay locked until the owner resolves
  *
  * @dev FRAUD DETECTION:
  *      Every merchant has an on-chain risk score (0-100) calculated from the
@@ -58,7 +58,9 @@ pragma solidity ^0.8.24;
  *      7. A merchant cannot pay their own invoice.
  *      8. Reentrancy guard, emergency pause for new activity, ownership transfer (to a multisig).
  *      9. getTotalLockedFunds() is O(1) instead of looping over every payment.
- *     10. NotParticipant error replaces the misleading NotBuyer in raiseDispute().
+ *     10. Only the buyer can raise a dispute, so a merchant cannot freeze a buyer's refund.
+ *     11. approveExtension() takes the number of days the buyer saw, and reverts if the merchant
+ *         changed the pending request (prevents a bait-and-switch on the deadline).
  *
  * @dev KNOWN LIMITS (by design for the MVP):
  *      - Disputes are resolved by a single owner (use a multisig as owner; DAO governance is Phase 2).
@@ -155,7 +157,6 @@ contract StacksBitEscrowV2 {
     error WrongStatus();
     error NotBuyer();
     error NotMerchant();
-    error NotParticipant();
     error InsufficientAmount();
     error InvalidPrice();
     error InvalidDays();
@@ -163,6 +164,7 @@ contract StacksBitEscrowV2 {
     error TooEarly();
     error TooLate();
     error NoPendingExtension();
+    error ExtensionMismatch();
     error MerchantCannotBeBuyer();
     error NothingToWithdraw();
     error ZeroAddress();
@@ -332,13 +334,16 @@ contract StacksBitEscrowV2 {
 
     /**
      * @notice Approve the merchant's request for more delivery time.
+     * @param extraDays The number of days the buyer saw and agrees to. It must match the pending
+     *        request, so the merchant cannot change the request after the buyer has decided.
      */
-    function approveExtension(uint256 paymentId) external {
+    function approveExtension(uint256 paymentId, uint256 extraDays) external {
         Payment storage p = payments[paymentId];
         if (p.id == 0) revert PaymentNotFound();
         if (msg.sender != p.buyer) revert NotBuyer();
         if (p.status != PaymentStatus.Locked) revert WrongStatus();
         if (p.pendingExtensionDays == 0) revert NoPendingExtension();
+        if (extraDays != p.pendingExtensionDays) revert ExtensionMismatch();
         if (block.timestamp > p.deadline) revert TooLate();
 
         p.deadline += p.pendingExtensionDays * 1 days;
@@ -367,13 +372,15 @@ contract StacksBitEscrowV2 {
 
     /**
      * @notice Raise a dispute. Funds stay locked until the owner resolves it.
-     * @dev Buyer or merchant, while the payment is Locked.
+     * @dev Buyer only, while the payment is Locked. A merchant who has delivered is protected by
+     *      claimAfterGrace(). If merchants could dispute, they could freeze a buyer's refund
+     *      (for example after missing the deadline) and force the outcome onto the owner.
      */
     function raiseDispute(uint256 paymentId) external {
         Payment storage p = payments[paymentId];
         if (p.id == 0) revert PaymentNotFound();
         if (p.status != PaymentStatus.Locked) revert WrongStatus();
-        if (msg.sender != p.buyer && msg.sender != p.merchant) revert NotParticipant();
+        if (msg.sender != p.buyer) revert NotBuyer();
 
         p.status = PaymentStatus.Disputed;
         merchants[p.merchant].disputeCount++;

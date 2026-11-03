@@ -225,9 +225,17 @@ describe("StacksBitEscrowV2", function () {
 
   // ---------- disputes ----------
   describe("disputes", function () {
-    it("only the buyer or merchant can raise a dispute", async function () {
+    it("only the buyer can raise a dispute", async function () {
       const id = await lockedPayment("1", 3);
-      await expectRevert(asOther.raiseDispute(id), c, "NotParticipant");
+      await expectRevert(asOther.raiseDispute(id), c, "NotBuyer");
+      await expectRevert(asMerchant.raiseDispute(id), c, "NotBuyer");
+    });
+    it("a merchant cannot freeze the buyer's refund by disputing after the deadline", async function () {
+      const id = await lockedPayment("1", 2);
+      await jump(2 * DAY + 10);
+      await expectRevert(asMerchant.raiseDispute(id), c, "NotBuyer");
+      await (await asBuyer.claimRefund(id)).wait();
+      expect((await c.getPayment(id)).status).to.equal(BigInt(4)); // Refunded
     });
     it("a dispute blocks the merchant's claim after grace", async function () {
       const id = await lockedPayment("1", 1);
@@ -306,19 +314,29 @@ describe("StacksBitEscrowV2", function () {
       const id = await lockedPayment("1", 2);
       const before = (await c.getPayment(id)).deadline;
       await (await asMerchant.requestExtension(id, 3)).wait();
-      await (await asBuyer.approveExtension(id)).wait();
+      await (await asBuyer.approveExtension(id, 3)).wait();
       expect((await c.getPayment(id)).deadline).to.equal(before + BigInt(3 * DAY));
     });
     it("the merchant cannot approve their own request", async function () {
       const id = await lockedPayment("1", 2);
       await (await asMerchant.requestExtension(id, 3)).wait();
-      await expectRevert(asMerchant.approveExtension(id), c, "NotBuyer");
+      await expectRevert(asMerchant.approveExtension(id, 3), c, "NotBuyer");
     });
     it("cannot be approved twice", async function () {
       const id = await lockedPayment("1", 2);
       await (await asMerchant.requestExtension(id, 3)).wait();
-      await (await asBuyer.approveExtension(id)).wait();
-      await expectRevert(asBuyer.approveExtension(id), c, "NoPendingExtension");
+      await (await asBuyer.approveExtension(id, 3)).wait();
+      await expectRevert(asBuyer.approveExtension(id, 3), c, "NoPendingExtension");
+    });
+    it("rejects an approval when the merchant changed the request (bait and switch)", async function () {
+      const id = await lockedPayment("1", 2);
+      const before = (await c.getPayment(id)).deadline;
+      await (await asMerchant.requestExtension(id, 2)).wait(); // what the buyer sees
+      await (await asMerchant.requestExtension(id, 14)).wait(); // merchant overwrites it
+      await expectRevert(asBuyer.approveExtension(id, 2), c, "ExtensionMismatch");
+      expect((await c.getPayment(id)).deadline).to.equal(before); // nothing was granted
+      await (await asBuyer.approveExtension(id, 14)).wait(); // buyer can still agree to the new value knowingly
+      expect((await c.getPayment(id)).deadline).to.equal(before + BigInt(14 * DAY));
     });
     it("only the merchant can request one", async function () {
       const id = await lockedPayment("1", 2);
