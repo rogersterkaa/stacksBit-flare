@@ -61,6 +61,9 @@ pragma solidity ^0.8.24;
  *     10. Only the buyer can raise a dispute, so a merchant cannot freeze a buyer's refund.
  *     11. approveExtension() takes the number of days the buyer saw, and reverts if the merchant
  *         changed the pending request (prevents a bait-and-switch on the deadline).
+ *     12. Optional ERC-20 stablecoin payments (for example USDT) from an owner-approved list. BOT
+ *         still works as before. If a token payout fails (for example a blacklisted address), the
+ *         amount becomes a claimable balance, so funds cannot get stuck.
  *
  * @dev KNOWN LIMITS (by design for the MVP):
  *      - Disputes are resolved by a single owner (use a multisig as owner; DAO governance is Phase 2).
@@ -104,6 +107,7 @@ contract StacksBitEscrowV2 {
         uint256 lockedAt;         // When the buyer paid
         uint256 deadline;         // lockedAt + deliveryDays (can be extended with buyer approval)
         uint256 pendingExtensionDays; // Extension requested by merchant, awaiting buyer approval
+        address token;            // address(0) = native BOT, otherwise an approved ERC-20 stablecoin
     }
 
     // ============================================
@@ -127,6 +131,14 @@ contract StacksBitEscrowV2 {
     mapping(address => Merchant) public merchants;
     mapping(uint256 => Payment) public payments;
 
+    // ---- ERC-20 stablecoin support (native BOT keeps its own variables above) ----
+    mapping(address => bool) public approvedTokens;
+    mapping(address => uint256) public tokenFees;     // fees owed to the owner, per token
+    mapping(address => uint256) public tokenLocked;   // escrowed (Locked and Disputed), per token
+    mapping(address => uint256) public tokenOwed;     // total claimable balances, per token
+    mapping(address => mapping(address => uint256)) public tokenClaimable;       // token => account => amount
+    mapping(address => mapping(address => uint256)) public merchantTokenVolume;  // merchant => token => volume
+
     uint256 private _guard = 1;       // Reentrancy guard: 1 = open, 2 = entered
 
     // ============================================
@@ -145,6 +157,11 @@ contract StacksBitEscrowV2 {
     event FeesWithdrawn(address indexed to, uint256 amount);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event PausedSet(bool paused);
+    event TokenApproved(address indexed token, bool approved);
+    event PaymentTokenSet(uint256 indexed paymentId, address indexed token);
+    event TokenPayoutDeferred(address indexed token, address indexed to, uint256 amount);
+    event TokenClaimed(address indexed token, address indexed account, uint256 amount);
+    event TokenFeesWithdrawn(address indexed token, address indexed to, uint256 amount);
 
     // ============================================
     // ERRORS
@@ -165,6 +182,11 @@ contract StacksBitEscrowV2 {
     error TooLate();
     error NoPendingExtension();
     error ExtensionMismatch();
+    error TokenNotApproved();
+    error InvalidToken();
+    error WrongToken();
+    error FeeOnTransferToken();
+    error NothingToClaim();
     error MerchantCannotBeBuyer();
     error NothingToWithdraw();
     error ZeroAddress();
@@ -228,8 +250,8 @@ contract StacksBitEscrowV2 {
     }
 
     /**
-     * @notice Create a payment request with a fixed price and delivery window.
-     * @param price Minimum amount the buyer must pay (in wei of the native asset)
+     * @notice Create a payment request in native BOT with a fixed price and delivery window.
+     * @param price Minimum amount the buyer must pay (in wei of BOT)
      * @param deliveryDays Days the merchant has to deliver after the buyer pays (1-14)
      * @param description What is being purchased
      */
@@ -238,29 +260,24 @@ contract StacksBitEscrowV2 {
         uint256 deliveryDays,
         string calldata description
     ) external onlyRegistered whenNotPaused returns (uint256) {
-        if (price == 0) revert InvalidPrice();
-        if (deliveryDays < MIN_DELIVERY_DAYS || deliveryDays > MAX_DELIVERY_DAYS) revert InvalidDays();
+        return _createPayment(address(0), price, deliveryDays, description);
+    }
 
-        paymentCount++;
-        uint256 paymentId = paymentCount;
-
-        payments[paymentId] = Payment({
-            id: paymentId,
-            merchant: msg.sender,
-            buyer: address(0),
-            price: price,
-            amount: 0,
-            description: description,
-            status: PaymentStatus.Pending,
-            createdAt: block.timestamp,
-            deliveryDays: deliveryDays,
-            lockedAt: 0,
-            deadline: 0,
-            pendingExtensionDays: 0
-        });
-
-        emit PaymentCreated(paymentId, msg.sender, price, description);
-        return paymentId;
+    /**
+     * @notice Create a payment request priced in an approved ERC-20 stablecoin.
+     * @param token The stablecoin address (must be on the approved list)
+     * @param price Minimum amount the buyer must pay, in the token's smallest unit
+     * @param deliveryDays Days the merchant has to deliver after the buyer pays (1-14)
+     * @param description What is being purchased
+     */
+    function createTokenPayment(
+        address token,
+        uint256 price,
+        uint256 deliveryDays,
+        string calldata description
+    ) external onlyRegistered whenNotPaused returns (uint256) {
+        if (!approvedTokens[token]) revert TokenNotApproved();
+        return _createPayment(token, price, deliveryDays, description);
     }
 
     /**
@@ -305,6 +322,7 @@ contract StacksBitEscrowV2 {
     function payInvoice(uint256 paymentId) external payable whenNotPaused {
         Payment storage p = payments[paymentId];
         if (p.id == 0) revert PaymentNotFound();
+        if (p.token != address(0)) revert WrongToken();
         if (p.status != PaymentStatus.Pending) revert WrongStatus();
         if (msg.sender == p.merchant) revert MerchantCannotBeBuyer();
         if (msg.value < p.price) revert InsufficientAmount();
@@ -317,6 +335,35 @@ contract StacksBitEscrowV2 {
         totalLocked += msg.value;
 
         emit PaymentLocked(paymentId, msg.sender, msg.value);
+    }
+
+    /**
+     * @notice Pay an invoice that is priced in an ERC-20 stablecoin. Funds are locked in escrow.
+     * @dev The buyer must first approve this contract to spend at least `amount` of the token.
+     *      Anything above the price is an optional tip. Tokens that take a fee on transfer are rejected.
+     */
+    function payInvoiceToken(uint256 paymentId, uint256 amount) external whenNotPaused nonReentrant {
+        Payment storage p = payments[paymentId];
+        if (p.id == 0) revert PaymentNotFound();
+        if (p.token == address(0)) revert WrongToken();
+        if (p.status != PaymentStatus.Pending) revert WrongStatus();
+        if (msg.sender == p.merchant) revert MerchantCannotBeBuyer();
+        if (!approvedTokens[p.token]) revert TokenNotApproved();
+        if (amount < p.price) revert InsufficientAmount();
+
+        // State first, then pull the tokens
+        p.buyer = msg.sender;
+        p.amount = amount;
+        p.status = PaymentStatus.Locked;
+        p.lockedAt = block.timestamp;
+        p.deadline = block.timestamp + (p.deliveryDays * 1 days);
+        tokenLocked[p.token] += amount;
+
+        uint256 balanceBefore = _balanceOf(p.token);
+        _safeTransferFrom(p.token, msg.sender, address(this), amount);
+        if (_balanceOf(p.token) - balanceBefore != amount) revert FeeOnTransferToken();
+
+        emit PaymentLocked(paymentId, msg.sender, amount);
     }
 
     /**
@@ -422,6 +469,34 @@ contract StacksBitEscrowV2 {
         emit FeesWithdrawn(owner, amount);
     }
 
+    /// @notice Add or remove a stablecoin from the approved list. Removing a token only blocks NEW
+    ///         invoices and unpaid invoices; payments already locked in it still complete normally.
+    function setTokenApproved(address token, bool approved) external onlyOwner {
+        if (approved && token.code.length == 0) revert InvalidToken();
+        approvedTokens[token] = approved;
+        emit TokenApproved(token, approved);
+    }
+
+    /// @notice Withdraw platform fees collected in a token. Escrowed funds can never be withdrawn here.
+    function withdrawTokenFees(address token) external onlyOwner nonReentrant {
+        uint256 amount = tokenFees[token];
+        if (amount == 0) revert NothingToWithdraw();
+        tokenFees[token] = 0;
+        if (!_callToken(token, abi.encodeWithSelector(0xa9059cbb, owner, amount))) revert TransferFailed();
+        emit TokenFeesWithdrawn(token, owner, amount);
+    }
+
+    /// @notice Withdraw a token balance that could not be paid out directly (for example because the
+    ///         address was blacklisted by the token at the time).
+    function claimToken(address token) external nonReentrant {
+        uint256 amount = tokenClaimable[token][msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        tokenClaimable[token][msg.sender] = 0;
+        tokenOwed[token] -= amount;
+        if (!_callToken(token, abi.encodeWithSelector(0xa9059cbb, msg.sender, amount))) revert TransferFailed();
+        emit TokenClaimed(token, msg.sender, amount);
+    }
+
     /// @notice Pause new registrations, payment requests and payments. Existing payments can still finish.
     function setPaused(bool value) external onlyOwner {
         paused = value;
@@ -439,23 +514,65 @@ contract StacksBitEscrowV2 {
     // INTERNAL
     // ============================================
 
+    function _createPayment(
+        address token,
+        uint256 price,
+        uint256 deliveryDays,
+        string calldata description
+    ) internal returns (uint256) {
+        if (price == 0) revert InvalidPrice();
+        if (deliveryDays < MIN_DELIVERY_DAYS || deliveryDays > MAX_DELIVERY_DAYS) revert InvalidDays();
+
+        paymentCount++;
+        uint256 paymentId = paymentCount;
+
+        payments[paymentId] = Payment({
+            id: paymentId,
+            merchant: msg.sender,
+            buyer: address(0),
+            price: price,
+            amount: 0,
+            description: description,
+            status: PaymentStatus.Pending,
+            createdAt: block.timestamp,
+            deliveryDays: deliveryDays,
+            lockedAt: 0,
+            deadline: 0,
+            pendingExtensionDays: 0,
+            token: token
+        });
+
+        emit PaymentCreated(paymentId, msg.sender, price, description);
+        if (token != address(0)) emit PaymentTokenSet(paymentId, token);
+        return paymentId;
+    }
+
     /// @dev Pays the merchant, keeps the fee, updates reputation. State changes happen before the transfer.
     function _release(Payment storage p) internal {
         p.status = PaymentStatus.Confirmed;
 
+        address token = p.token;
         uint256 amount = p.amount;
         uint256 fee = (amount * feePercent) / 1000;
         uint256 payout = amount - fee;
 
-        accumulatedFees += fee;
-        totalLocked -= amount;
-
         Merchant storage m = merchants[p.merchant];
-        m.totalVolume += amount;
         m.completedCount++;
 
-        (bool success, ) = p.merchant.call{value: payout}("");
-        if (!success) revert TransferFailed();
+        if (token == address(0)) {
+            accumulatedFees += fee;
+            totalLocked -= amount;
+            m.totalVolume += amount;
+
+            (bool success, ) = p.merchant.call{value: payout}("");
+            if (!success) revert TransferFailed();
+        } else {
+            tokenFees[token] += fee;
+            tokenLocked[token] -= amount;
+            merchantTokenVolume[p.merchant][token] += amount;
+
+            _sendToken(token, p.merchant, payout);
+        }
 
         emit DeliveryConfirmed(p.id, payout, fee);
     }
@@ -464,14 +581,51 @@ contract StacksBitEscrowV2 {
     function _refund(Payment storage p) internal {
         p.status = PaymentStatus.Refunded;
 
+        address token = p.token;
         uint256 amount = p.amount;
-        totalLocked -= amount;
         merchants[p.merchant].refundedCount++;
 
-        (bool success, ) = p.buyer.call{value: amount}("");
-        if (!success) revert TransferFailed();
+        if (token == address(0)) {
+            totalLocked -= amount;
+
+            (bool success, ) = p.buyer.call{value: amount}("");
+            if (!success) revert TransferFailed();
+        } else {
+            tokenLocked[token] -= amount;
+
+            _sendToken(token, p.buyer, amount);
+        }
 
         emit PaymentRefunded(p.id, p.buyer, amount);
+    }
+
+    // ---- ERC-20 helpers (work with tokens that return no value, like USDT) ----
+
+    function _callToken(address token, bytes memory data) internal returns (bool) {
+        if (token.code.length == 0) return false;
+        (bool ok, bytes memory ret) = token.call(data);
+        return ok && (ret.length == 0 || (ret.length >= 32 && abi.decode(ret, (uint256)) == 1));
+    }
+
+    function _safeTransferFrom(address token, address from, address to, uint256 amount) internal {
+        if (!_callToken(token, abi.encodeWithSelector(0x23b872dd, from, to, amount))) revert TransferFailed();
+    }
+
+    function _balanceOf(address token) internal view returns (uint256) {
+        (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSelector(0x70a08231, address(this)));
+        if (!ok || ret.length < 32) revert InvalidToken();
+        return abi.decode(ret, (uint256));
+    }
+
+    /// @dev Pays out tokens. If the transfer fails (for example the recipient is blacklisted by the
+    ///      token), the amount becomes a claimable balance instead of blocking the whole payment.
+    function _sendToken(address token, address to, uint256 amount) internal {
+        if (amount == 0) return;
+        if (!_callToken(token, abi.encodeWithSelector(0xa9059cbb, to, amount))) {
+            tokenOwed[token] += amount;
+            tokenClaimable[token][to] += amount;
+            emit TokenPayoutDeferred(token, to, amount);
+        }
     }
 
     // ============================================
@@ -502,6 +656,11 @@ contract StacksBitEscrowV2 {
         if (refundRate >= 15) return 60;
         if (refundRate >= 5) return 35;
         return 10;
+    }
+
+    /// @notice Value held in escrow for a token (Locked and Disputed payments).
+    function getTokenLockedFunds(address token) external view returns (uint256) {
+        return tokenLocked[token];
     }
 
     function getMerchantCount() external view returns (uint256) {
